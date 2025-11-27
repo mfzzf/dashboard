@@ -1,7 +1,7 @@
 import 'server-cli-only'
 
+import { getE2BAccessToken } from '@/configs/api'
 import { l } from '@/lib/clients/logger/logger'
-import { getSessionInsecure } from '@/server/auth/get-session'
 import { getTeamMetricsCore } from '@/server/sandboxes/get-team-metrics-core'
 import { serializeError } from 'serialize-error'
 import { TeamMetricsRequestSchema, TeamMetricsResponse } from './types'
@@ -16,7 +16,6 @@ export async function POST(
     const parsedInput = TeamMetricsRequestSchema.safeParse(await request.json())
 
     if (!parsedInput.success) {
-      // should not happen
       l.warn(
         {
           key: 'team_metrics_route_handler:invalid_request',
@@ -34,30 +33,18 @@ export async function POST(
 
     const { start: startMs, end: endMs } = parsedInput.data
 
-    const session = await getSessionInsecure()
-
-    if (!session) {
-      l.warn(
-        {
-          key: 'team_metrics_route_handler:unauthenticated',
-          team_id: teamId,
-        },
-        'team_metrics_route_handler: unauthenticated'
-      )
-
-      return Response.json({ error: 'Unauthenticated' }, { status: 401 })
-    }
+    // Use E2B_ACCESS_TOKEN from environment instead of session
+    const accessToken = getE2BAccessToken()
 
     const result = await getTeamMetricsCore({
-      accessToken: session.access_token,
+      accessToken,
       teamId,
-      userId: session.user.id,
+      userId: 'system',
       startMs,
       endMs,
     })
 
     if (result.error) {
-      // error already logged in core function
       return Response.json({ error: result.error }, { status: result.status })
     }
 

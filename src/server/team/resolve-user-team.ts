@@ -1,8 +1,8 @@
 import 'server-only'
 
 import { COOKIE_KEYS } from '@/configs/cookies'
+import { db } from '@/lib/clients/db'
 import { l } from '@/lib/clients/logger/logger'
-import { supabaseAdmin } from '@/lib/clients/supabase/admin'
 import { cookies } from 'next/headers'
 import { serializeError } from 'serialize-error'
 import { checkUserTeamAuth } from '../auth/check-user-team-auth-cached'
@@ -40,22 +40,42 @@ export async function resolveUserTeam(
     }
   }
 
-  // No valid cookies, query database for user's teams
-  const { data: teamsData, error } = await supabaseAdmin
-    .from('users_teams')
-    .select(
-      `
-      team_id,
-      is_default,
-      team:teams(
-        id,
-        slug
-      )
-    `
-    )
-    .eq('user_id', userId)
+  // If no database, return null (will use infra API for team resolution)
+  if (!db) {
+    return null
+  }
 
-  if (error) {
+  try {
+    // Query database for user's teams
+    const teamsData = await db`
+      SELECT ut.team_id, ut.is_default, t.id, t.slug
+      FROM users_teams ut
+      JOIN teams t ON ut.team_id = t.id
+      WHERE ut.user_id = ${userId}
+    `
+
+    if (!teamsData || teamsData.length === 0) {
+      return null
+    }
+
+    // Try to get default team first
+    const defaultTeam = teamsData.find((t) => t.is_default)
+
+    if (defaultTeam) {
+      return {
+        id: defaultTeam.team_id,
+        slug: defaultTeam.slug || defaultTeam.team_id,
+      }
+    }
+
+    // Fallback to first team
+    const firstTeam = teamsData[0]!
+
+    return {
+      id: firstTeam.team_id,
+      slug: firstTeam.slug || firstTeam.team_id,
+    }
+  } catch (error) {
     l.error(
       {
         key: 'resolve_user_team:db_error',
@@ -66,39 +86,4 @@ export async function resolveUserTeam(
     )
     return null
   }
-
-  if (!teamsData || teamsData.length === 0) {
-    return null
-  }
-
-  // Try to get default team first
-  const defaultTeam = teamsData.find((t) => t.is_default)
-
-  if (defaultTeam?.team) {
-    return {
-      id: defaultTeam.team_id,
-      slug: defaultTeam.team.slug || defaultTeam.team_id,
-    }
-  }
-
-  // Fallback to first team
-  const firstTeam = teamsData[0]!
-
-  if (firstTeam?.team) {
-    return {
-      id: firstTeam.team_id,
-      slug: firstTeam.team.slug || firstTeam.team_id,
-    }
-  }
-
-  l.error(
-    {
-      key: 'resolve_user_team:malformed_data',
-      userId,
-      teamsData,
-    },
-    'Teams data exists but malformed (no team relation)'
-  )
-
-  return null
 }

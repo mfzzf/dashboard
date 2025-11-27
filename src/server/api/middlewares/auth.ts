@@ -1,36 +1,30 @@
 import { getTracer } from '@/lib/clients/tracer'
-import { getSessionInsecure } from '@/server/auth/get-session'
-import getUserByToken from '@/server/auth/get-user-by-token'
 import { context, SpanStatusCode, trace } from '@opentelemetry/api'
-import {
-  createServerClient,
-  parseCookieHeader,
-  serializeCookieHeader,
-} from '@supabase/ssr'
-import { unauthorizedUserError } from '../errors'
 import { t } from '../init'
 
-const createSupabaseServerClient = (headers: Headers) => {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        getAll() {
-          return parseCookieHeader(headers.get('cookie') ?? '')
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            headers.append(
-              'Set-Cookie',
-              serializeCookieHeader(name, value, options)
-            )
-          )
-        },
-      },
-    }
-  )
+/**
+ * Mock session for backward compatibility (no real user auth)
+ * Uses E2B_ACCESS_TOKEN from environment
+ */
+const mockSession = {
+  access_token: process.env.E2B_ACCESS_TOKEN || '',
+  refresh_token: '',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: {
+    id: 'system',
+    email: 'system@e2b.dev',
+    app_metadata: {},
+    user_metadata: {},
+    aud: 'authenticated',
+    created_at: new Date().toISOString(),
+  },
 }
+
+/**
+ * Mock user for backward compatibility (no real user auth)
+ */
+const mockUser = mockSession.user
 
 export const authMiddleware = t.middleware(async ({ ctx, next }) => {
   const tracer = getTracer()
@@ -39,46 +33,20 @@ export const authMiddleware = t.middleware(async ({ ctx, next }) => {
   span.setAttribute('trpc.middleware.name', 'auth')
 
   try {
-    const supabase = createSupabaseServerClient(ctx.headers)
-
-    const session = await context.with(
-      trace.setSpan(context.active(), span),
-      async () => {
-        return await getSessionInsecure(supabase)
-      }
-    )
-
-    if (!session) {
-      span.setStatus({
-        code: SpanStatusCode.ERROR,
-        message: 'session not found',
-      })
-
-      throw unauthorizedUserError()
-    }
-
-    const {
-      data: { user },
-    } = await context.with(trace.setSpan(context.active(), span), async () => {
-      return await getUserByToken(session.access_token)
+    // No real authentication - use mock session/user
+    // Authentication is handled via E2B_ACCESS_TOKEN in API calls
+    await context.with(trace.setSpan(context.active(), span), async () => {
+      // Just a placeholder for telemetry
+      return Promise.resolve()
     })
-
-    if (!user) {
-      span.setStatus({
-        code: SpanStatusCode.ERROR,
-        message: 'user not found for session',
-      })
-
-      throw unauthorizedUserError()
-    }
 
     span.setStatus({ code: SpanStatusCode.OK })
 
     return next({
       ctx: {
         ...ctx,
-        session,
-        user,
+        session: mockSession,
+        user: mockUser,
       },
     })
   } finally {

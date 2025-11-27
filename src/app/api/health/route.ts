@@ -1,5 +1,5 @@
+import { db } from '@/lib/clients/db'
 import { kv } from '@/lib/clients/kv'
-import { supabaseAdmin } from '@/lib/clients/supabase/admin'
 import { NextResponse } from 'next/server'
 
 // NOTE - using cdn caching for rate limiting on db calls
@@ -9,7 +9,7 @@ export const maxDuration = 10
 export async function GET() {
   const checks = {
     kv: false,
-    supabase: false,
+    database: false,
   }
 
   // check kv
@@ -20,18 +20,17 @@ export async function GET() {
     // kv failed
   }
 
-  // check supabase
-  const { data: _, error } = await supabaseAdmin
-    .from('teams')
-    .select('id')
-    .limit(1)
-    .single()
-
-  if (!error) {
-    checks.supabase = true
+  // check database
+  if (db) {
+    try {
+      await db`SELECT 1`
+      checks.database = true
+    } catch (error) {
+      // database failed
+    }
   }
 
-  const allHealthy = checks.kv && checks.supabase
+  const allHealthy = checks.kv && checks.database
 
   return NextResponse.json(
     {

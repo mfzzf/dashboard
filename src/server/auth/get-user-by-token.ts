@@ -1,29 +1,31 @@
 import 'server-only'
 
-import { supabaseAdmin } from '@/lib/clients/supabase/admin'
-import { AuthSessionMissingError } from '@supabase/supabase-js'
 import { cache } from 'react'
 
 /**
- * Retrieves a user from Supabase using their access token.
+ * Returns a mock user since we're using environment-based authentication.
+ * The actual user ID comes from the E2B_ACCESS_TOKEN JWT.
  *
- * This function uses the Supabase admin client instead of the regular client because:
- * 1. The admin client doesn't rely on cookies, making it suitable for server-side operations
- * 2. It allows us to use React's cache function for request memoization (see get-user-by-token-memo.tsx)
- * 3. It provides a consistent interface for token-based user retrieval across the application
- *
- * @param accessToken - The user's Supabase access token
- * @returns A promise that resolves to an object containing either the user data or an error
- * @throws {AuthSessionMissingError} When no access token is provided
+ * @param accessToken - The user's access token (not used in env-based auth)
+ * @returns A promise that resolves to an object containing mock user data
  */
 function getUserByToken(accessToken: string | undefined) {
-  const trimmedAccessToken = accessToken?.trim()
-
-  if (!trimmedAccessToken) {
-    return { error: AuthSessionMissingError, data: { user: null } }
-  }
-
-  return supabaseAdmin.auth.getUser(accessToken)
+  // Return mock user for env-based authentication
+  const userId = process.env.USER_ID || '00000000-0000-0000-0000-000000000000'
+  
+  return Promise.resolve({
+    data: {
+      user: {
+        id: userId,
+        email: 'admin@local',
+        app_metadata: {},
+        user_metadata: { name: 'Admin' },
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
+      },
+    },
+    error: null,
+  })
 }
 
 export default cache(getUserByToken)

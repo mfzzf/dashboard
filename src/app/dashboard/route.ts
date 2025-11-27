@@ -1,8 +1,7 @@
-import { AUTH_URLS, PROTECTED_URLS } from '@/configs/urls'
-import { createClient } from '@/lib/clients/supabase/server'
-import { encodedRedirect } from '@/lib/utils/auth'
+import { AUTH_HEADERS } from '@/configs/api'
+import { PROTECTED_URLS } from '@/configs/urls'
+import { infra } from '@/lib/clients/api'
 import { setTeamCookies } from '@/lib/utils/cookies'
-import { resolveUserTeam } from '@/server/team/resolve-user-team'
 import { NextRequest, NextResponse } from 'next/server'
 
 export const TAB_URL_MAP: Record<string, (teamId: string) => string> = {
@@ -15,45 +14,38 @@ export const TAB_URL_MAP: Record<string, (teamId: string) => string> = {
   settings: (teamId) => PROTECTED_URLS.GENERAL(teamId),
   team: (teamId) => PROTECTED_URLS.GENERAL(teamId),
   members: (teamId) => PROTECTED_URLS.MEMBERS(teamId),
-  account: (_) => PROTECTED_URLS.ACCOUNT_SETTINGS,
-  personal: (_) => PROTECTED_URLS.ACCOUNT_SETTINGS,
 }
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const tab = searchParams.get('tab')
 
-  const supabase = await createClient()
+  // Get teams from infra API
+  const res = await infra.GET('/teams', {
+    headers: AUTH_HEADERS(),
+  })
 
-  const { data, error } = await supabase.auth.getUser()
-
-  if (error || !data.user) {
-    return NextResponse.redirect(new URL('/sign-in', request.url))
+  if (res.error || !res.data || res.data.length === 0) {
+    // No teams available - show error page
+    return NextResponse.redirect(new URL('/dashboard/not-found', request.url))
   }
 
-  const team = await resolveUserTeam(data.user.id)
+  // Use first team (or default team if available)
+  const team =
+    res.data.find(
+      (t: { isDefault?: boolean }) => t.isDefault
+    ) || res.data[0]
 
-  if (!team) {
-    // UNEXPECTED STATE - sign out and redirect to sign-in
-    await supabase.auth.signOut()
-
-    const signInUrl = new URL(AUTH_URLS.SIGN_IN, request.url)
-
-    return encodedRedirect(
-      'error',
-      signInUrl.toString(),
-      'No personal team found. Please contact support.'
-    )
-  }
+  const teamSlug = team.name
 
   // Set team cookies for persistence
-  await setTeamCookies(team.id, team.slug)
+  await setTeamCookies(team.teamID, teamSlug)
 
   // Determine redirect path based on tab parameter
   const urlGenerator = tab ? TAB_URL_MAP[tab] : null
   const redirectPath = urlGenerator
-    ? urlGenerator(team.slug || team.id)
-    : PROTECTED_URLS.SANDBOXES(team.slug || team.id)
+    ? urlGenerator(teamSlug)
+    : PROTECTED_URLS.SANDBOXES(teamSlug)
 
   return NextResponse.redirect(new URL(redirectPath, request.url))
 }

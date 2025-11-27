@@ -1,55 +1,65 @@
 import 'server-cli-only'
 
+import { db } from '@/lib/clients/db'
 import { l } from '@/lib/clients/logger/logger'
-import { supabaseAdmin } from '@/lib/clients/supabase/admin'
 import { serializeError } from 'serialize-error'
 
 export async function getDefaultTeamRelation(userId: string) {
-  const { data, error } = await supabaseAdmin
-    .from('users_teams')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('is_default', true)
+  if (!db) {
+    throw new Error('Database not available')
+  }
 
-  if (error || data.length === 0) {
+  try {
+    const data = await db`
+      SELECT * FROM users_teams
+      WHERE user_id = ${userId} AND is_default = true
+      LIMIT 1
+    `
+
+    if (!data || data.length === 0) {
+      throw new Error('No default team found')
+    }
+
+    return data[0]!
+  } catch (error) {
     l.error({
       key: 'get_default_team_relation:error',
       error: serializeError(error),
       user_id: userId,
     })
-
     throw new Error('No default team found')
   }
-
-  return data[0]!
 }
 
 export async function getDefaultTeam(userId: string) {
-  const { data, error } = await supabaseAdmin
-    .from('users_teams')
-    .select(
-      `
-      team_id,
-      teams (
-        id,
-        name,
-        slug
-      )
-    `
-    )
-    .eq('user_id', userId)
-    .eq('is_default', true)
-    .single()
+  if (!db) {
+    throw new Error('Database not available')
+  }
 
-  if (error || !data) {
+  try {
+    const data = await db`
+      SELECT ut.team_id, t.id, t.name, t.slug
+      FROM users_teams ut
+      JOIN teams t ON ut.team_id = t.id
+      WHERE ut.user_id = ${userId} AND ut.is_default = true
+      LIMIT 1
+    `
+
+    if (!data || data.length === 0) {
+      throw new Error('No default team found')
+    }
+
+    return {
+      id: data[0].id,
+      name: data[0].name,
+      slug: data[0].slug,
+    }
+  } catch (error) {
     l.error({
       key: 'GET_DEFAULT_TEAM:ERROR',
-      message: error?.message,
       error: serializeError(error),
       user_id: userId,
     })
     throw new Error('No default team found')
   }
-
-  return data.teams
 }

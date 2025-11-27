@@ -1,11 +1,9 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { serializeError } from 'serialize-error'
 import { ALLOW_SEO_INDEXING } from './configs/flags'
 import { l } from './lib/clients/logger/logger'
 import { getMiddlewareRedirectFromPath } from './lib/utils/redirects'
 import { getRewriteForPath } from './lib/utils/rewrites'
-import { getAuthRedirect } from './server/proxy'
 
 export async function proxy(request: NextRequest) {
   try {
@@ -73,40 +71,10 @@ export async function proxy(request: NextRequest) {
       return response
     }
 
-    const response = NextResponse.next({
+    // No authentication check - dashboard is publicly accessible
+    return NextResponse.next({
       request,
     })
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              response.cookies.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
-
-    // checks/refreshes auth session
-    const { error, data } = await supabase.auth.getUser()
-
-    const isAuthenticated = !error && !!data?.user
-
-    // if user is not authenticated, redirects to sign-in
-    const authRedirect = getAuthRedirect(request, isAuthenticated)
-
-    if (authRedirect) {
-      return authRedirect
-    }
-
-    return response
   } catch (error) {
     l.error(
       {

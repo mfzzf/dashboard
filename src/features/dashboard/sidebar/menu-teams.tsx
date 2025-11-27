@@ -1,10 +1,9 @@
-import { UserTeamsResponse } from '@/app/api/teams/user/types'
+import { TeamsResponse } from '@/app/api/teams/types'
 import { useTeamCookieManager } from '@/lib/hooks/use-team'
 import { ClientTeam } from '@/types/dashboard.types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/ui/primitives/avatar'
 import {
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from '@/ui/primitives/dropdown-menu'
@@ -21,17 +20,13 @@ export default function DashboardSidebarMenuTeams() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const { user, team: selectedTeam } = useDashboard()
+  const { team: selectedTeam } = useDashboard()
 
   useTeamCookieManager()
 
   const { data: teams, isLoading } = useSWR<ClientTeam[] | null>(
-    ['/api/teams/user', user?.id],
-    async ([url, userId]: [string, string | undefined]) => {
-      if (!userId) {
-        return null
-      }
-
+    '/api/teams',
+    async (url: string) => {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -43,7 +38,7 @@ export default function DashboardSidebarMenuTeams() {
         throw new Error(`Failed to fetch teams: ${response.status}`)
       }
 
-      const { teams } = (await response.json()) as UserTeamsResponse
+      const { teams } = (await response.json()) as TeamsResponse
 
       return teams
     },
@@ -76,11 +71,6 @@ export default function DashboardSidebarMenuTeams() {
   if (isLoading) {
     return (
       <>
-        {user?.email && (
-          <DropdownMenuLabel className="mb-2">
-            <Skeleton className="h-3 w-40 bg-bg-inverted/10" />
-          </DropdownMenuLabel>
-        )}
         {[1, 2].map((i) => (
           <div
             key={i}
@@ -96,9 +86,6 @@ export default function DashboardSidebarMenuTeams() {
 
   return (
     <DropdownMenuRadioGroup value={selectedTeam?.id}>
-      {user?.email && (
-        <DropdownMenuLabel className="mb-2">{user.email}</DropdownMenuLabel>
-      )}
       {teams && teams.length > 0 ? (
         teams.map((team) => (
           <Link href={getNextUrl(team)} passHref key={team.id}>

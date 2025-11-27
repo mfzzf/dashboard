@@ -1,17 +1,12 @@
-import checkUserTeamAuthCached from '@/server/auth/check-user-team-auth-cached'
-import { getSessionInsecure } from '@/server/auth/get-session'
-import getUserByToken from '@/server/auth/get-user-by-token'
 import { getTeamIdFromSegment } from '@/server/team/get-team-id-from-segment'
-import { UnauthenticatedError, UnknownError } from '@/types/errors'
+import { UnknownError } from '@/types/errors'
 import { context, SpanStatusCode, trace } from '@opentelemetry/api'
-import { Session, User } from '@supabase/supabase-js'
 import { createMiddleware, createSafeActionClient } from 'next-safe-action'
 import { unauthorized } from 'next/navigation'
 import { serializeError } from 'serialize-error'
 import { z } from 'zod'
 import { ActionError, flattenClientInputValue } from '../utils/action'
 import { l } from './logger/logger'
-import { createClient } from './supabase/server'
 import { getTracer } from './tracer'
 
 export const actionClient = createSafeActionClient({
@@ -138,64 +133,52 @@ export const actionClient = createSafeActionClient({
   return result
 })
 
+/**
+ * Mock session for backward compatibility (no real user auth)
+ */
+const mockSession = {
+  access_token: process.env.E2B_ACCESS_TOKEN || '',
+  refresh_token: '',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: {
+    id: 'system',
+    email: 'system@e2b.dev',
+    app_metadata: {},
+    user_metadata: {},
+    aud: 'authenticated',
+    created_at: new Date().toISOString(),
+  },
+}
+
+/**
+ * Mock user for backward compatibility (no real user auth)
+ */
+const mockUser = mockSession.user
+
+/**
+ * Auth action client - now uses E2B_ACCESS_TOKEN instead of Supabase auth.
+ * Provides mock session/user context for backward compatibility.
+ */
 export const authActionClient = actionClient.use(async ({ next }) => {
-  const supabase = await createClient()
-
-  // retrieve session from storage medium (cookies)
-  // if no stored session found, not authenticated
-
-  // it's fine to use the "insecure" cookie session here, since we only use it for quick denial and do a proper auth check (auth.getUser) afterwards.
-  const session = await getSessionInsecure(supabase)
-
-  // early return if user is no session already
-  if (!session) {
-    throw UnauthenticatedError()
-  }
-
-  // now retrieve user from supabase to use further
-  const {
-    data: { user },
-  } = await getUserByToken(session.access_token)
-
-  if (!user || !session) {
-    throw UnauthenticatedError()
-  }
-
-  if (!session) {
-    throw UnauthenticatedError()
-  }
-
-  return next({ ctx: { user, session, supabase } })
+  return next({
+    ctx: {
+      user: mockUser,
+      session: mockSession,
+    },
+  })
 })
 
 /**
  * Middleware that automatically resolves team ID from teamIdOrSlug.
- *
- * This middleware:
- * 1. Requires that the client input contains a 'teamIdOrSlug' property
- * 2. Resolves the teamIdOrSlug to an actual team ID using getTeamIdFromSegmentMemo
- * 3. Throws unauthorized() if the team ID cannot be resolved (team doesn't exist or user lacks access)
- * 4. Adds the resolved teamId to the context for use in the action handler
- * 5. Throws an error if no teamIdOrSlug is provided
- *
- * @example
- * ```ts
- * const myAction = authActionClient
- *   .use(withTeamIdResolution)
- *   .schema(z.object({ teamIdOrSlug: z.string(), ... }))
- *   .action(async ({ parsedInput, ctx }) => {
- *     // ctx.teamId is now available and guaranteed to be valid
- *     const { teamId } = ctx
- *   })
- * ```
+ * No user authentication required - uses E2B_ACCESS_TOKEN from environment.
  */
 export const withTeamIdResolution = createMiddleware<{
   ctx: {
-    user: User
-    session: Session
-    supabase: Awaited<ReturnType<typeof createClient>>
+    user: typeof mockUser
+    session: typeof mockSession
   }
-}>().define(async ({ next, clientInput, ctx }) => {
+}>().define(async ({ next, clientInput }) => {
   if (
     !clientInput ||
     typeof clientInput !== 'object' ||
@@ -205,8 +188,7 @@ export const withTeamIdResolution = createMiddleware<{
       {
         key: 'with_team_id_resolution:missing_team_id_or_slug',
         context: {
-          teamIdOrSlug: (clientInput as { teamIdOrSlug?: string })
-            ?.teamIdOrSlug,
+          teamIdOrSlug: (clientInput as { teamIdOrSlug?: string })?.teamIdOrSlug,
         },
       },
       'Missing teamIdOrSlug when using withTeamIdResolution middleware'
@@ -228,22 +210,6 @@ export const withTeamIdResolution = createMiddleware<{
         },
       },
       `with_team_id_resolution:invalid_team_id_or_slug - invalid team id or slug provided through withTeamIdResolution middleware: ${clientInput.teamIdOrSlug}`
-    )
-
-    throw unauthorized()
-  }
-
-  const isAuthorized = await checkUserTeamAuthCached(ctx.user.id, teamId)
-
-  if (!isAuthorized) {
-    l.warn(
-      {
-        key: 'with_team_id_resolution:user_not_authorized',
-        context: {
-          teamIdOrSlug: clientInput.teamIdOrSlug,
-        },
-      },
-      `with_team_id_resolution:user_not_authorized - user not authorized to access team: ${clientInput.teamIdOrSlug}`
     )
 
     throw unauthorized()

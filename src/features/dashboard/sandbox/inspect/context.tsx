@@ -1,12 +1,8 @@
 'use client'
 
-import { SUPABASE_AUTH_HEADERS } from '@/configs/api'
-import { AUTH_URLS } from '@/configs/urls'
-import { supabase } from '@/lib/clients/supabase/client'
 import { useSandboxInspectAnalytics } from '@/lib/hooks/use-analytics'
 import { getParentPath, normalizePath } from '@/lib/utils/filesystem'
 import Sandbox, { EntryInfo } from 'e2b'
-import { useRouter } from 'next/navigation'
 import {
   createContext,
   ReactNode,
@@ -215,17 +211,14 @@ export function SandboxInspectProvider({
       sandboxManagerRef.current.stopWatching()
     }
 
-    const { data } = await supabase.auth.getSession()
-
-    if (!data || !data.session) {
-      router.replace(AUTH_URLS.SIGN_IN)
-      return
-    }
+    // Get auth token from API
+    const tokenRes = await fetch('/api/auth/token')
+    const { token } = await tokenRes.json()
 
     const sandbox = await Sandbox.connect(sandboxInfo.sandboxID, {
       domain: process.env.NEXT_PUBLIC_E2B_DOMAIN,
       headers: {
-        ...SUPABASE_AUTH_HEADERS(data.session.access_token, teamId),
+        Authorization: `Bearer ${token}`,
       },
     })
 
@@ -241,7 +234,7 @@ export function SandboxInspectProvider({
       team_id: teamId,
       root_path: rootPath,
     })
-  }, [sandboxInfo, teamId, rootPath, trackInteraction, router])
+  }, [sandboxInfo, teamId, rootPath, trackInteraction])
 
   // handle sandbox connection / disconnection
   useEffect(() => {

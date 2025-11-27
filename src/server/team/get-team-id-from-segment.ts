@@ -1,13 +1,13 @@
 import 'server-only'
 
+import { AUTH_HEADERS } from '@/configs/api'
 import { CACHE_TAGS } from '@/configs/cache'
+import { infra } from '@/lib/clients/api'
 import { l } from '@/lib/clients/logger/logger'
-import { supabaseAdmin } from '@/lib/clients/supabase/admin'
 import { TeamIdOrSlugSchema } from '@/lib/schemas/team'
 import { cacheLife } from 'next/dist/server/use-cache/cache-life'
 import { cacheTag } from 'next/dist/server/use-cache/cache-tag'
 import { serializeError } from 'serialize-error'
-import z from 'zod'
 
 export const getTeamIdFromSegment = async (segment: string) => {
   'use cache'
@@ -28,38 +28,54 @@ export const getTeamIdFromSegment = async (segment: string) => {
     return null
   }
 
-  if (z.uuid().safeParse(segment).success) {
-    // make sure this uuid is a valid teamId and is not it's slug
-    const { data } = await supabaseAdmin
-      .from('teams')
-      .select('id')
-      .not('slug', 'eq', segment)
-      .eq('id', segment)
+  try {
+    const res = await infra.GET('/teams', {
+      headers: AUTH_HEADERS(),
+    })
 
-    if (data?.length) {
-      return data[0]!.id
-    }
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from('teams')
-    .select('id')
-    .eq('slug', segment)
-
-  if (error || !data.length) {
-    l.warn(
-      {
-        key: 'get_team_id_from_segment:failed_to_get_team_id',
-        error: serializeError(error),
-        context: {
-          segment,
+    if (res.error || !res.data) {
+      l.warn(
+        {
+          key: 'get_team_id_from_segment:failed_to_fetch_teams',
+          error: serializeError(res.error),
+          context: { segment },
         },
-      },
-      'get_team_id_from_segment - failed to get team id'
+        'get_team_id_from_segment - failed to fetch teams'
+      )
+      return null
+    }
+
+    // Find team by ID or name (slug) - decode URL encoded characters
+    const decodedSegment = decodeURIComponent(segment)
+    const team = res.data.find(
+      (t: { teamID: string; name: string }) =>
+        t.teamID === segment ||
+        t.teamID === decodedSegment ||
+        t.name === segment ||
+        t.name === decodedSegment
     )
 
+    if (!team) {
+      l.warn(
+        {
+          key: 'get_team_id_from_segment:team_not_found',
+          context: { segment },
+        },
+        `get_team_id_from_segment - team not found: ${segment}`
+      )
+      return null
+    }
+
+    return team.teamID
+  } catch (error) {
+    l.error(
+      {
+        key: 'get_team_id_from_segment:exception',
+        error: serializeError(error),
+        context: { segment },
+      },
+      'get_team_id_from_segment - exception'
+    )
     return null
   }
-
-  return data[0]!.id
 }

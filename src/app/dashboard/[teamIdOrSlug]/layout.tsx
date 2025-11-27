@@ -1,16 +1,13 @@
 import { COOKIE_KEYS } from '@/configs/cookies'
 import { METADATA } from '@/configs/metadata'
-import { AUTH_URLS } from '@/configs/urls'
 import { DashboardContextProvider } from '@/features/dashboard/context'
 import DashboardLayoutView from '@/features/dashboard/layout/layout'
 import Sidebar from '@/features/dashboard/sidebar/sidebar'
 import { l } from '@/lib/clients/logger/logger'
-import { getSessionInsecure } from '@/server/auth/get-session'
-import getUserByToken from '@/server/auth/get-user-by-token'
-import { getTeam } from '@/server/team/get-team'
+import { getTeamFromInfra } from '@/server/team/get-team-from-infra'
 import { SidebarInset, SidebarProvider } from '@/ui/primitives/sidebar'
 import { cookies } from 'next/headers'
-import { redirect, unauthorized } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { Metadata } from 'next/types'
 import { serializeError } from 'serialize-error'
 
@@ -36,36 +33,27 @@ export default async function DashboardLayout({
   const cookieStore = await cookies()
   const { teamIdOrSlug } = await params
 
-  const session = await getSessionInsecure()
-  const { error, data } = await getUserByToken(session?.access_token)
-
   const sidebarState = cookieStore.get(COOKIE_KEYS.SIDEBAR_STATE)?.value
   const defaultOpen = sidebarState === 'true'
 
-  if (error || !data.user) {
-    throw redirect(AUTH_URLS.SIGN_IN)
-  }
+  const teamRes = await getTeamFromInfra(teamIdOrSlug)
 
-  const teamRes = await getTeam({ teamIdOrSlug })
-  const team = teamRes?.data
-
-  if (!team) {
+  if (!teamRes) {
     l.warn(
       {
         key: 'dashboard_layout:team_not_resolved',
-        user_id: data.user.id,
-        error: serializeError(teamRes?.serverError),
+        error: serializeError(teamRes),
         context: {
           teamIdOrSlug,
         },
       },
-      `dashboard_layout:team_not_resolved - team not resolved for user (${data.user.id}) when accessing team (${teamIdOrSlug}) in dashboard layout`
+      `dashboard_layout:team_not_resolved - team not resolved when accessing team (${teamIdOrSlug}) in dashboard layout`
     )
-    throw unauthorized()
+    notFound()
   }
 
   return (
-    <DashboardContextProvider initialTeam={team} initialUser={data.user}>
+    <DashboardContextProvider initialTeam={teamRes}>
       <SidebarProvider
         defaultOpen={typeof sidebarState === 'undefined' ? true : defaultOpen}
       >

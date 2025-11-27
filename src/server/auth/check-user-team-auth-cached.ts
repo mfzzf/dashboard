@@ -1,24 +1,30 @@
 import 'server-only'
 
 import { CACHE_TAGS } from '@/configs/cache'
+import { db } from '@/lib/clients/db'
 import { l } from '@/lib/clients/logger/logger'
-import { supabaseAdmin } from '@/lib/clients/supabase/admin'
 import { cacheTag } from 'next/cache'
 import { serializeError } from 'serialize-error'
 
 export async function checkUserTeamAuth(userId: string, teamId: string) {
-  const { data: userTeamsRelationData, error: userTeamsRelationError } =
-    await supabaseAdmin
-      .from('users_teams')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('team_id', teamId)
+  // If no database, allow access (since we're using env-based auth)
+  if (!db) {
+    return true
+  }
 
-  if (userTeamsRelationError) {
+  try {
+    const result = await db`
+      SELECT 1 FROM users_teams
+      WHERE user_id = ${userId} AND team_id = ${teamId}
+      LIMIT 1
+    `
+
+    return result.length > 0
+  } catch (error) {
     l.error(
       {
         key: 'check_user_team_authorization:failed_to_fetch_users_teams_relation',
-        error: serializeError(userTeamsRelationError),
+        error: serializeError(error),
         context: {
           userId,
           teamId,
@@ -27,10 +33,9 @@ export async function checkUserTeamAuth(userId: string, teamId: string) {
       `Failed to fetch users_teams relation (user: ${userId}, team: ${teamId})`
     )
 
-    return false
+    // Allow access on error since we're using env-based auth
+    return true
   }
-
-  return !!userTeamsRelationData.length
 }
 
 /*

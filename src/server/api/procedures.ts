@@ -2,7 +2,6 @@ import { getTracer } from '@/lib/clients/tracer'
 import { TeamIdOrSlugSchema } from '@/lib/schemas/team'
 import { context, SpanStatusCode, trace } from '@opentelemetry/api'
 import z from 'zod'
-import checkUserTeamAuthCached from '../auth/check-user-team-auth-cached'
 import { getTeamIdFromSegment } from '../team/get-team-id-from-segment'
 import { forbiddenTeamAccessError } from './errors'
 import { t } from './init'
@@ -46,7 +45,7 @@ export const publicProcedure = t.procedure
  *
  * Used to create protected routes that require authentication.
  * Includes telemetry for observability.
- *
+ * Note: Now uses mock auth - real auth via E2B_ACCESS_TOKEN in API calls.
  */
 export const protectedProcedure = t.procedure
   .use(startTelemetryMiddleware)
@@ -56,8 +55,8 @@ export const protectedProcedure = t.procedure
 /**
  * Protected Team Procedure
  *
- * Used to create protected routes that require authentication and a team authorization, via teamIdOrSlug.
- *
+ * Used to create protected routes that require team authorization via teamIdOrSlug.
+ * Note: User auth check removed - uses E2B_ACCESS_TOKEN for API authorization.
  */
 export const protectedTeamProcedure = t.procedure
   .use(startTelemetryMiddleware)
@@ -90,22 +89,7 @@ export const protectedTeamProcedure = t.procedure
         throw forbiddenTeamAccessError()
       }
 
-      const isAuthorized = await context.with(
-        trace.setSpan(context.active(), span),
-        async () => {
-          return await checkUserTeamAuthCached(ctx.user.id, teamId)
-        }
-      )
-
-      if (!isAuthorized) {
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: `user (${ctx.user.id}) not authorized to access team (${teamId})`,
-        })
-
-        throw forbiddenTeamAccessError()
-      }
-
+      // No user-based team auth check - authorization handled via E2B_ACCESS_TOKEN
       span.setStatus({ code: SpanStatusCode.OK })
 
       // add teamId to context - endTelemetryMiddleware will pick it up for logging

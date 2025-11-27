@@ -1,15 +1,11 @@
 'use client'
 
 import { ClientTeam } from '@/types/dashboard.types'
-import { User } from '@supabase/supabase-js'
 import { createContext, ReactNode, useContext, useState } from 'react'
 
 interface DashboardContextValue {
   team: ClientTeam
-  user: User
-
   setTeam: (team: ClientTeam) => void
-  setUser: (user: User) => void
 }
 
 const DashboardContext = createContext<DashboardContextValue | undefined>(
@@ -19,23 +15,17 @@ const DashboardContext = createContext<DashboardContextValue | undefined>(
 interface DashboardContextProviderProps {
   children: ReactNode
   initialTeam: ClientTeam
-  initialUser: User
 }
 
 export function DashboardContextProvider({
   children,
   initialTeam,
-  initialUser,
 }: DashboardContextProviderProps) {
   const [team, setTeam] = useState(initialTeam)
-  const [user, setUser] = useState(initialUser)
 
   const value = {
     team,
-    user,
-
     setTeam,
-    setUser,
   }
 
   return (
