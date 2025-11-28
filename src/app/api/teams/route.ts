@@ -1,4 +1,4 @@
-import { AUTH_HEADERS } from '@/configs/api'
+import { BEARER_AUTH_HEADERS } from '@/configs/api'
 import { infra } from '@/lib/clients/api'
 import { ClientTeam } from '@/types/dashboard.types'
 import { TeamsResponse } from './types'
@@ -6,7 +6,7 @@ import { TeamsResponse } from './types'
 export async function GET() {
   try {
     const res = await infra.GET('/teams', {
-      headers: AUTH_HEADERS(),
+      headers: BEARER_AUTH_HEADERS(),
     })
 
     if (res.error || !res.data) {

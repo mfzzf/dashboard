@@ -1,6 +1,7 @@
-import { AUTH_HEADERS } from '@/configs/api'
+import { BEARER_AUTH_HEADERS } from '@/configs/api'
 import { PROTECTED_URLS } from '@/configs/urls'
 import { infra } from '@/lib/clients/api'
+import { l } from '@/lib/clients/logger/logger'
 import { setTeamCookies } from '@/lib/utils/cookies'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -20,12 +21,25 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const tab = searchParams.get('tab')
 
-  // Get teams from infra API
+  // Get teams from infra API (requires Bearer token auth)
   const res = await infra.GET('/teams', {
-    headers: AUTH_HEADERS(),
+    headers: BEARER_AUTH_HEADERS(),
+  })
+
+  l.info({
+    key: 'dashboard:teams_response',
+    status: res.response?.status,
+    error: res.error,
+    data: res.data,
+    headers: BEARER_AUTH_HEADERS(),
   })
 
   if (res.error || !res.data || res.data.length === 0) {
+    l.warn({
+      key: 'dashboard:no_teams',
+      error: res.error,
+      status: res.response?.status,
+    })
     // No teams available - show error page
     return NextResponse.redirect(new URL('/dashboard/not-found', request.url))
   }

@@ -3,6 +3,7 @@
 import { useSandboxInspectAnalytics } from '@/lib/hooks/use-analytics'
 import { getParentPath, normalizePath } from '@/lib/utils/filesystem'
 import Sandbox, { EntryInfo } from 'e2b'
+import { useRouter } from 'next/navigation'
 import {
   createContext,
   ReactNode,

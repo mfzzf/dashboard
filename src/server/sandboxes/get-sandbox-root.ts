@@ -1,4 +1,4 @@
-import { SUPABASE_AUTH_HEADERS } from '@/configs/api'
+import { SDK_AUTH_HEADERS } from '@/configs/api'
 import { authActionClient, withTeamIdResolution } from '@/lib/clients/action'
 import { l } from '@/lib/clients/logger/logger'
 import { TeamIdOrSlugSchema } from '@/lib/schemas/team'
@@ -20,7 +20,7 @@ export const getSandboxRoot = authActionClient
     const { sandboxId, rootPath } = parsedInput
     const { teamId, session } = ctx
 
-    const headers = SUPABASE_AUTH_HEADERS(session.access_token, teamId)
+    const headers = SDK_AUTH_HEADERS()
 
     let sandbox: Sandbox | null = null
 
@@ -50,9 +50,15 @@ export const getSandboxRoot = authActionClient
         return returnServerError('ROOT_PATH_NOT_FOUND')
       }
 
+      const errorMessage =
+        err instanceof Error ? err.message : 'Unknown error'
+      const errorName = err instanceof Error ? err.name : 'UnknownError'
+
       l.error({
         key: 'get_sandbox_root:unexpected_error',
         error: err,
+        error_message: errorMessage,
+        error_name: errorName,
         team_id: teamId,
         user_id: session.user.id,
         sandbox_id: sandboxId,
@@ -61,6 +67,6 @@ export const getSandboxRoot = authActionClient
         },
       })
 
-      return returnServerError('Failed to list root directory.')
+      return returnServerError(`Failed to list root directory: ${errorMessage}`)
     }
   })

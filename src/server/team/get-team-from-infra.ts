@@ -1,13 +1,13 @@
 import 'server-only'
 
-import { AUTH_HEADERS } from '@/configs/api'
+import { BEARER_AUTH_HEADERS } from '@/configs/api'
 import { infra } from '@/lib/clients/api'
 import { l } from '@/lib/clients/logger/logger'
 import { ClientTeam } from '@/types/dashboard.types'
 import { cache } from 'react'
 
 /**
- * Get team data from infra API using E2B_ACCESS_TOKEN
+ * Get team data from infra API using E2B_API_KEY
  * No user authentication required
  */
 async function getTeamFromInfraPure(
@@ -15,7 +15,7 @@ async function getTeamFromInfraPure(
 ): Promise<ClientTeam | null> {
   try {
     const res = await infra.GET('/teams', {
-      headers: AUTH_HEADERS(),
+      headers: BEARER_AUTH_HEADERS(),
     })
 
     if (res.error || !res.data) {

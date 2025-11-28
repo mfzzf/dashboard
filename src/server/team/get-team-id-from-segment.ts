@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { AUTH_HEADERS } from '@/configs/api'
+import { BEARER_AUTH_HEADERS } from '@/configs/api'
 import { CACHE_TAGS } from '@/configs/cache'
 import { infra } from '@/lib/clients/api'
 import { l } from '@/lib/clients/logger/logger'
@@ -30,7 +30,7 @@ export const getTeamIdFromSegment = async (segment: string) => {
 
   try {
     const res = await infra.GET('/teams', {
-      headers: AUTH_HEADERS(),
+      headers: BEARER_AUTH_HEADERS(),
     })
 
     if (res.error || !res.data) {

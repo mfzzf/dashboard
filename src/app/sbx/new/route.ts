@@ -1,4 +1,4 @@
-import { AUTH_HEADERS, SUPABASE_AUTH_HEADERS } from '@/configs/api'
+import { BEARER_AUTH_HEADERS, SDK_AUTH_HEADERS } from '@/configs/api'
 import { PROTECTED_URLS } from '@/configs/urls'
 import { infra } from '@/lib/clients/api'
 import { l } from '@/lib/clients/logger/logger'
@@ -10,7 +10,7 @@ export const GET = async (req: NextRequest) => {
   try {
     // Get default team from infra API
     const teamsRes = await infra.GET('/teams', {
-      headers: AUTH_HEADERS(),
+      headers: BEARER_AUTH_HEADERS(),
     })
 
     if (teamsRes.error || !teamsRes.data || teamsRes.data.length === 0) {
@@ -29,9 +29,7 @@ export const GET = async (req: NextRequest) => {
 
     const sbx = await Sandbox.create('base', {
       domain: process.env.NEXT_PUBLIC_E2B_DOMAIN,
-      headers: {
-        ...SUPABASE_AUTH_HEADERS(undefined, defaultTeam.teamID),
-      },
+      headers: SDK_AUTH_HEADERS(),
     })
 
     const inspectUrl = PROTECTED_URLS.SANDBOX_INSPECT(
